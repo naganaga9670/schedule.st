@@ -558,7 +558,7 @@
         checkIntervalMilliseconds: 1000
     };
 
-    const poleCelebrationMessage = 'おめでとうございます！サインポールでました！出現確率10％です！';
+    const poleCelebrationMessage = '💈✨ おめでとうございます！サインポールでました！出現率10％です！ ✨💈';
 
     function getDaysInMonth(year, month) {
         return new Date(year, month + 1, 0).getDate();
@@ -772,7 +772,7 @@
             } else if (isCurrentlyOpen) {
                 messages.push('ただいま営業中です（19:00まで）。');
             } else {
-                messages.push('本日は午前9時から営業予定です。');
+                messages.push('本日は午前9時から営業開始予定です。');
             }
         } else if (!todayIsOff && hour < 22) {
             messages.push('本日の営業は終了しました。');
@@ -784,7 +784,7 @@
 
         if (shouldShowNextDayNotice) {
             if (!tomorrowIsOff) {
-                messages.push('明日は午前9時から営業予定です。');
+                messages.push('明日は午前9時から営業開始予定です。');
             } else {
                 const nextOpen = findNextOpenDate(todayOnly);
                 if (!todayIsOff) {
@@ -795,7 +795,7 @@
                     longBreakAnnounced = true;
                 }
                 if (nextOpen) {
-                    messages.push(`次回は${formatMonthDayWithWeekday(nextOpen)}、午前9時から営業予定です。`);
+                    messages.push(`次回は${formatMonthDayWithWeekday(nextOpen)}、午前9時から営業開始予定です。`);
                 }
             }
         }
