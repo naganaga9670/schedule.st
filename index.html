@@ -256,11 +256,9 @@
 
         .status-message {
             display: inline-block;
-            min-width: 100%;
-            padding-left: 100%;
-            box-sizing: content-box;
-            animation: status-scroll 22s linear infinite;
+            white-space: nowrap;
             will-change: transform;
+            transform: translate3d(0, 0, 0);
             position: relative;
             z-index: 1;
         }
@@ -270,8 +268,8 @@
         }
 
         @keyframes status-scroll {
-            from { transform: translateX(0); }
-            to { transform: translateX(-100%); }
+            from { transform: translate3d(var(--scroll-start, 0px), 0, 0); }
+            to { transform: translate3d(var(--scroll-end, -100%), 0, 0); }
         }
 
         .status-open { background-color: #27ae60; }
@@ -812,14 +810,42 @@
         };
     }
 
+    function restartStatusScroll() {
+        const statusBar = document.getElementById('status-bar');
+        const statusMessage = document.getElementById('status-message');
+        const barWidth = statusBar.clientWidth;
+        const messageWidth = statusMessage.scrollWidth;
+
+        statusMessage.style.animation = 'none';
+        statusMessage.style.setProperty('--scroll-start', `${barWidth}px`);
+        statusMessage.style.setProperty('--scroll-end', `${-messageWidth}px`);
+
+        // レイアウト確定後に再開。文言変更時の途中ジャンプを防ぐ。
+        void statusMessage.offsetWidth;
+
+        const pixelsPerSecond = 90;
+        const durationSeconds = Math.max(12, (barWidth + messageWidth) / pixelsPerSecond);
+        statusMessage.style.animation = `status-scroll ${durationSeconds}s linear infinite`;
+    }
+
     function updateStatusBar(now = new Date(), poleVisible = false) {
         const status = buildStatusMessage(now);
         const statusBar = document.getElementById('status-bar');
         const statusMessage = document.getElementById('status-message');
-        statusBar.className = `status-fixed-bar ${status.className}${poleVisible ? ' pole-visible' : ''}`;
-        statusMessage.innerText = poleVisible
+        const nextText = poleVisible
             ? `${poleCelebrationMessage}　　${status.text}`
             : status.text;
+        const nextClassName = `status-fixed-bar ${status.className}${poleVisible ? ' pole-visible' : ''}`;
+        const textChanged = statusMessage.innerText !== nextText;
+
+        if (statusBar.className !== nextClassName) {
+            statusBar.className = nextClassName;
+        }
+
+        if (textChanged) {
+            statusMessage.innerText = nextText;
+            restartStatusScroll();
+        }
     }
 
     function createMonthElement(year, month, isPrintMode = false) {
@@ -973,8 +999,15 @@
         }
 
         updateStatusBar();
+        restartStatusScroll();
         updatePoleVisibility();
         window.setInterval(updatePoleVisibility, poleSchedule.checkIntervalMilliseconds);
+        window.setInterval(() => {
+            const now = new Date();
+            const statusBar = document.getElementById('status-bar');
+            updateStatusBar(now, statusBar.classList.contains('pole-visible'));
+        }, 60 * 1000);
+        window.addEventListener('resize', restartStatusScroll);
         window.addEventListener('hashchange', () => updatePoleVisibility());
     }
     window.onload = init;
