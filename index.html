@@ -559,8 +559,6 @@
     };
 
     const poleCelebrationMessage = 'おめでとうございます！サインポールでました！出現確率10％です！';
-    let poleTestRequestWasActive = false;
-    let poleTestEndsAt = 0;
 
     function getDaysInMonth(year, month) {
         return new Date(year, month + 1, 0).getDate();
@@ -673,20 +671,8 @@
         const isScheduledVisible = visibleIntervals.some(interval =>
             currentSecond >= interval.startSecond && currentSecond < interval.endSecond
         );
-        const testRequested =
-            window.location.hash === '#pole-test' ||
-            new URLSearchParams(window.location.search).get('poleTest') === '1';
-
-        if (testRequested && !poleTestRequestWasActive) {
-            poleTestEndsAt = now.getTime() + (poleSchedule.durationSeconds * 1000);
-        }
-        if (!testRequested) {
-            poleTestEndsAt = 0;
-        }
-        poleTestRequestWasActive = testRequested;
-
-        const isTestVisible = testRequested && now.getTime() < poleTestEndsAt;
-        const isVisible = testRequested ? isTestVisible : isScheduledVisible;
+        const isTestVisible = window.location.hash === '#pole-test';
+        const isVisible = isScheduledVisible || isTestVisible;
 
         if (statusBar.classList.contains('pole-visible') !== isVisible) {
             updateStatusBar(now, isVisible);
