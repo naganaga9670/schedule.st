@@ -278,15 +278,7 @@
             display: none;
         }
 
-        .status-fixed-bar:hover .status-message,
-        .status-fixed-bar:hover .pole-message {
-            animation-play-state: paused;
-        }
-
-        @keyframes status-scroll {
-            from { transform: translate3d(var(--scroll-start, 0px), 0, 0); }
-            to { transform: translate3d(var(--scroll-end, -100%), 0, 0); }
-        }
+        /* スクロールはJavaScriptで制御する。CSSアニメーションイベントには依存しない。 */
 
         .status-open { background-color: #27ae60; }
         .status-closed { background-color: #6B5545; }
@@ -827,59 +819,90 @@
         };
     }
 
-    function restartTicker(element) {
-        if (!element) return;
+    const tickerState = {
+        x: 0,
+        speed: 90, // px/秒（従来と同程度）
+        lastTime: null,
+        pendingText: null,
+        initialized: false,
+        rafId: null
+    };
+
+    function getTickerMetrics() {
         const statusBar = document.getElementById('status-bar');
-        const barWidth = statusBar.clientWidth;
-
-        // display:none の要素は幅を測れないため、表示中の要素だけ再計算する。
-        if (element.offsetParent === null) return;
-
-        const messageWidth = element.scrollWidth;
-        element.style.animation = 'none';
-        element.style.setProperty('--scroll-start', `${barWidth}px`);
-        element.style.setProperty('--scroll-end', `${-messageWidth}px`);
-        void element.offsetWidth;
-
-        const pixelsPerSecond = 90;
-        const durationSeconds = Math.max(12, (barWidth + messageWidth) / pixelsPerSecond);
-        element.style.animation = `status-scroll ${durationSeconds}s linear infinite`;
+        const statusMessage = document.getElementById('status-message');
+        return {
+            barWidth: statusBar.clientWidth,
+            messageWidth: statusMessage.scrollWidth
+        };
     }
 
-    let pendingTickerText = null;
-
-    function restartStatusScroll() {
-        restartTicker(document.getElementById('status-message'));
+    function placeTickerAtStart() {
+        const statusMessage = document.getElementById('status-message');
+        const { barWidth } = getTickerMetrics();
+        tickerState.x = barWidth;
+        tickerState.lastTime = null;
+        statusMessage.style.transform = `translate3d(${tickerState.x}px, 0, 0)`;
+        tickerState.initialized = true;
     }
 
-    function applyTickerText(text, forceNow = false) {
+    function applyPendingTickerTextAtBoundary() {
+        if (tickerState.pendingText === null) return;
+        const statusMessage = document.getElementById('status-message');
+        statusMessage.innerText = tickerState.pendingText;
+        tickerState.pendingText = null;
+    }
+
+    function setTickerText(text, forceNow = false) {
         const statusMessage = document.getElementById('status-message');
 
-        if (forceNow || statusMessage.innerText === '確認中...') {
-            pendingTickerText = null;
-            if (statusMessage.innerText !== text) {
-                statusMessage.innerText = text;
-            }
-            requestAnimationFrame(restartStatusScroll);
+        if (forceNow || !tickerState.initialized || statusMessage.innerText === '確認中...') {
+            tickerState.pendingText = null;
+            if (statusMessage.innerText !== text) statusMessage.innerText = text;
+            placeTickerAtStart();
             return;
         }
 
         if (statusMessage.innerText !== text) {
-            // 流れている途中では変更せず、次の周回開始時に切り替える。
-            pendingTickerText = text;
-        } else {
-            pendingTickerText = null;
+            // 現在の1周は最後まで流し、次の右端スタート時にだけ文言を変更する。
+            tickerState.pendingText = text;
+        } else if (tickerState.pendingText === text) {
+            tickerState.pendingText = null;
         }
     }
 
-    function handleTickerIteration() {
-        if (pendingTickerText === null) return;
+    function tickStatusMessage(timestamp) {
+        const statusBar = document.getElementById('status-bar');
         const statusMessage = document.getElementById('status-message');
-        const nextText = pendingTickerText;
-        pendingTickerText = null;
-        statusMessage.innerText = nextText;
-        // 文言の長さが変わるので、新しい幅で次の1周を開始する。
-        requestAnimationFrame(restartStatusScroll);
+
+        if (!tickerState.initialized) placeTickerAtStart();
+
+        if (tickerState.lastTime === null) tickerState.lastTime = timestamp;
+        const deltaSeconds = Math.min((timestamp - tickerState.lastTime) / 1000, 0.05);
+        tickerState.lastTime = timestamp;
+
+        // マウスを乗せている間だけ一時停止。プレビューでもイベント完了待ちはしない。
+        const paused = statusBar.matches(':hover');
+        if (!paused) tickerState.x -= tickerState.speed * deltaSeconds;
+
+        const messageWidth = statusMessage.scrollWidth;
+        if (tickerState.x <= -messageWidth) {
+            applyPendingTickerTextAtBoundary();
+            tickerState.x = statusBar.clientWidth;
+        }
+
+        statusMessage.style.transform = `translate3d(${tickerState.x}px, 0, 0)`;
+        tickerState.rafId = requestAnimationFrame(tickStatusMessage);
+    }
+
+    function startTickerLoop() {
+        if (tickerState.rafId !== null) return;
+        tickerState.rafId = requestAnimationFrame(tickStatusMessage);
+    }
+
+    function restartStatusScroll() {
+        // リサイズ時だけ右端へ置き直す。文言変更では途中リセットしない。
+        placeTickerAtStart();
     }
 
     function updateStatusBar(now = new Date(), poleVisible = false) {
@@ -890,13 +913,11 @@
             ? `${poleCelebrationMessage}　　${status.text}`
             : status.text;
 
-        // 背景・サインポール枠は予定時刻どおり切り替える。
         if (statusBar.className !== nextClassName) {
             statusBar.className = nextClassName;
         }
 
-        // 本文は現在のスクロールを完走してから自然につなぐ。
-        applyTickerText(desiredText);
+        setTickerText(desiredText);
     }
 
     function createMonthElement(year, month, isPrintMode = false) {
@@ -1049,10 +1070,8 @@
             printPage2.appendChild(card2);
         }
 
-        const ticker = document.getElementById('status-message');
-        ticker.addEventListener('animationiteration', handleTickerIteration);
-
         updateStatusBar();
+        startTickerLoop();
         updatePoleVisibility();
         window.setInterval(updatePoleVisibility, poleSchedule.checkIntervalMilliseconds);
         window.setInterval(() => {
