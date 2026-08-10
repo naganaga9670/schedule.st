@@ -626,37 +626,46 @@
         const hour = now.getHours();
         const longBreak = findUpcomingLongBreak(todayOnly);
         const isDuringLongBreak = longBreak && todayOnly >= longBreak.start && todayOnly <= longBreak.end;
+        const isCurrentlyOpen = !todayIsOff && hour >= 9 && hour < 19;
+        const longBreakLabel = longBreak
+            ? longBreakLabels[dateKey(longBreak.start)] || '長期休業'
+            : null;
         const longBreakMessage = longBreak
-            ? `なお、${longBreakLabels[dateKey(longBreak.start)] || '長期休業'}は${formatMonthDay(longBreak.start)}から${formatMonthDay(longBreak.end)}までです。`
+            ? `なお、${longBreakLabel}は${formatMonthDay(longBreak.start)}から${formatMonthDay(longBreak.end)}までです。`
             : null;
         let longBreakAnnounced = false;
 
-        if (todayIsOff) {
+        if (isDuringLongBreak) {
+            messages.push(`${longBreakLabel}中のため、お休みをいただいております。`);
+        } else if (todayIsOff) {
             messages.push('本日はお休みをいただいております。');
-        } else if (hour >= 9 && hour < 19) {
+        } else if (isCurrentlyOpen) {
             messages.push('ただいま営業中です（19:00まで）。');
         } else if (hour >= 19) {
             messages.push('本日の営業は終了しました。');
         } else {
-            messages.push('本日は9:00から営業予定です。');
+            messages.push('本日は午前9時から営業予定です。');
         }
 
         if (isDuringLongBreak) {
-            messages.push(longBreakMessage);
             longBreakAnnounced = true;
         }
 
-        if (!tomorrowIsOff) {
-            messages.push('明日は9:00から営業予定です。');
-        } else {
-            const nextOpen = findNextOpenDate(todayOnly);
-            messages.push('明日はお休みをいただきます。');
-            if (longBreak && tomorrow >= longBreak.start && tomorrow <= longBreak.end && !longBreakAnnounced) {
-                messages.push(longBreakMessage);
-                longBreakAnnounced = true;
-            }
-            if (nextOpen) {
-                messages.push(`次回は${formatMonthDay(nextOpen)}9:00から営業予定です。`);
+        if (!isCurrentlyOpen) {
+            if (!tomorrowIsOff) {
+                messages.push('明日は午前9時から営業予定です。');
+            } else {
+                const nextOpen = findNextOpenDate(todayOnly);
+                if (!todayIsOff) {
+                    messages.push('明日はお休みをいただきます。');
+                }
+                if (longBreak && tomorrow >= longBreak.start && tomorrow <= longBreak.end && !longBreakAnnounced) {
+                    messages.push(longBreakMessage);
+                    longBreakAnnounced = true;
+                }
+                if (nextOpen) {
+                    messages.push(`次回は${formatMonthDay(nextOpen)}午前9時から営業予定です。`);
+                }
             }
         }
 
