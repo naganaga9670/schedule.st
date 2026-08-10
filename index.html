@@ -208,7 +208,7 @@
             bottom: 0;
             left: 0;
             width: 100%;
-            padding: 16px 0;
+            padding: calc(3mm + 8px) 0;
             box-sizing: border-box;
             font-size: 18px;
             font-weight: bold;
@@ -217,6 +217,41 @@
             letter-spacing: 1px;
             overflow: hidden;
             white-space: nowrap;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.65);
+        }
+
+        .status-fixed-bar::before,
+        .status-fixed-bar::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 3mm;
+            background: repeating-linear-gradient(
+                135deg,
+                #d22630 0 14px,
+                #ffffff 14px 28px,
+                #1d5d93 28px 42px,
+                #ffffff 42px 56px
+            );
+            z-index: 0;
+            opacity: 0;
+            transition: opacity 0.35s ease;
+            pointer-events: none;
+        }
+
+        .status-fixed-bar::before {
+            top: 0;
+        }
+
+        .status-fixed-bar::after {
+            bottom: 0;
+        }
+
+        .status-fixed-bar.pole-visible::before,
+        .status-fixed-bar.pole-visible::after {
+            opacity: 1;
         }
 
         .status-message {
@@ -226,6 +261,8 @@
             box-sizing: content-box;
             animation: status-scroll 22s linear infinite;
             will-change: transform;
+            position: relative;
+            z-index: 1;
         }
 
         .status-fixed-bar:hover .status-message {
@@ -237,9 +274,9 @@
             to { transform: translateX(-100%); }
         }
 
-        .status-open { background-color: #27ae60; color: #ffffff; }
-        .status-closed { background-color: #6B5545; color: #ffffff; }
-        .status-over { background-color: #7f8c8d; color: #ffffff; }
+        .status-open { background-color: #27ae60; }
+        .status-closed { background-color: #6B5545; }
+        .status-over { background-color: #7f8c8d; }
 
         /* 通常表示時は非表示 */
         .print-page {
@@ -513,6 +550,18 @@
         '2027-05-03': 'GW休業'
     };
 
+    const poleSchedule = {
+        durationSeconds: 2 * 60,
+        appearancesPerHour: 3,
+        minimumGapSeconds: 5 * 60,
+        boundaryGapSeconds: 30,
+        checkIntervalMilliseconds: 1000
+    };
+
+    const poleCelebrationMessage = 'おめでとうございます！サインポールでました！出現確率10％です！';
+    let poleTestRequestWasActive = false;
+    let poleTestEndsAt = 0;
+
     function getDaysInMonth(year, month) {
         return new Date(year, month + 1, 0).getDate();
     }
@@ -553,6 +602,95 @@
 
     function formatMonthDayWithWeekday(date) {
         return `${formatMonthDay(date)}${weekdaysLabels[date.getDay()]}曜日`;
+    }
+
+    function createHourlyRandom(date = new Date()) {
+        const seedText = [
+            date.getFullYear(),
+            date.getMonth() + 1,
+            date.getDate(),
+            date.getHours()
+        ].join('-');
+
+        let hash = 2166136261;
+        for (let i = 0; i < seedText.length; i++) {
+            hash ^= seedText.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+
+        let state = hash >>> 0;
+        return function random() {
+            state += 0x6D2B79F5;
+            let value = state;
+            value = Math.imul(value ^ (value >>> 15), value | 1);
+            value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+            return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function getPoleVisibleIntervals(date = new Date()) {
+        const random = createHourlyRandom(date);
+        const count = poleSchedule.appearancesPerHour;
+        const duration = poleSchedule.durationSeconds;
+        const minimumGap = poleSchedule.minimumGapSeconds;
+        const boundaryGap = poleSchedule.boundaryGapSeconds;
+        const minimumUsedSeconds =
+            (count * duration) +
+            ((count - 1) * minimumGap) +
+            (2 * boundaryGap);
+        const extraSeconds = 3600 - minimumUsedSeconds;
+
+        const weights = Array.from({ length: count + 1 }, () => random() + 0.01);
+        const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+        const extras = weights.map(weight => Math.floor(extraSeconds * weight / weightTotal));
+        extras[extras.length - 1] += extraSeconds - extras.reduce((sum, value) => sum + value, 0);
+
+        const gaps = extras.map((extra, index) => {
+            const baseGap = index === 0 || index === count ? boundaryGap : minimumGap;
+            return baseGap + extra;
+        });
+
+        const intervals = [];
+        let startSecond = gaps[0];
+        for (let i = 0; i < count; i++) {
+            intervals.push({
+                startSecond,
+                endSecond: startSecond + duration
+            });
+            startSecond += duration + gaps[i + 1];
+        }
+
+        return intervals;
+    }
+
+    function updatePoleVisibility(now = new Date()) {
+        const statusBar = document.getElementById('status-bar');
+        const currentSecond =
+            (now.getMinutes() * 60) +
+            now.getSeconds() +
+            (now.getMilliseconds() / 1000);
+        const visibleIntervals = getPoleVisibleIntervals(now);
+        const isScheduledVisible = visibleIntervals.some(interval =>
+            currentSecond >= interval.startSecond && currentSecond < interval.endSecond
+        );
+        const testRequested =
+            window.location.hash === '#pole-test' ||
+            new URLSearchParams(window.location.search).get('poleTest') === '1';
+
+        if (testRequested && !poleTestRequestWasActive) {
+            poleTestEndsAt = now.getTime() + (poleSchedule.durationSeconds * 1000);
+        }
+        if (!testRequested) {
+            poleTestEndsAt = 0;
+        }
+        poleTestRequestWasActive = testRequested;
+
+        const isTestVisible = testRequested && now.getTime() < poleTestEndsAt;
+        const isVisible = testRequested ? isTestVisible : isScheduledVisible;
+
+        if (statusBar.classList.contains('pole-visible') !== isVisible) {
+            updateStatusBar(now, isVisible);
+        }
     }
 
     function isOffDate(date) {
@@ -688,12 +826,14 @@
         };
     }
 
-    function updateStatusBar() {
-        const status = buildStatusMessage();
+    function updateStatusBar(now = new Date(), poleVisible = false) {
+        const status = buildStatusMessage(now);
         const statusBar = document.getElementById('status-bar');
         const statusMessage = document.getElementById('status-message');
-        statusBar.className = `status-fixed-bar ${status.className}`;
-        statusMessage.innerText = status.text;
+        statusBar.className = `status-fixed-bar ${status.className}${poleVisible ? ' pole-visible' : ''}`;
+        statusMessage.innerText = poleVisible
+            ? `${poleCelebrationMessage}　　${status.text}`
+            : status.text;
     }
 
     function createMonthElement(year, month, isPrintMode = false) {
@@ -847,6 +987,9 @@
         }
 
         updateStatusBar();
+        updatePoleVisibility();
+        window.setInterval(updatePoleVisibility, poleSchedule.checkIntervalMilliseconds);
+        window.addEventListener('hashchange', () => updatePoleVisibility());
     }
     window.onload = init;
 </script>
