@@ -627,7 +627,7 @@
         const longBreak = findUpcomingLongBreak(todayOnly);
         const isDuringLongBreak = longBreak && todayOnly >= longBreak.start && todayOnly <= longBreak.end;
         const longBreakMessage = longBreak
-            ? `なお、${longBreakLabels[dateKey(longBreak.start)] || '長期休業'}は${formatMonthDay(longBreak.start)}から${formatMonthDay(longBreak.end)}までお休みをいただきます。`
+            ? `なお、${longBreakLabels[dateKey(longBreak.start)] || '長期休業'}は${formatMonthDay(longBreak.start)}から${formatMonthDay(longBreak.end)}までです。`
             : null;
         let longBreakAnnounced = false;
 
