@@ -268,12 +268,14 @@
             display: none;
         }
 
+        /* コメント本文は常に同じ要素で流す。
+           サインポール切替時も、現在の1周が終わるまで本文を書き換えない。 */
         .status-fixed-bar.pole-visible .status-message {
-            display: none;
+            display: inline-block;
         }
 
         .status-fixed-bar.pole-visible .pole-message {
-            display: inline-block;
+            display: none;
         }
 
         .status-fixed-bar:hover .status-message,
@@ -844,34 +846,57 @@
         element.style.animation = `status-scroll ${durationSeconds}s linear infinite`;
     }
 
+    let pendingTickerText = null;
+
     function restartStatusScroll() {
-        const statusBar = document.getElementById('status-bar');
-        const activeMessage = statusBar.classList.contains('pole-visible')
-            ? document.getElementById('pole-message')
-            : document.getElementById('status-message');
-        restartTicker(activeMessage);
+        restartTicker(document.getElementById('status-message'));
+    }
+
+    function applyTickerText(text, forceNow = false) {
+        const statusMessage = document.getElementById('status-message');
+
+        if (forceNow || statusMessage.innerText === '確認中...') {
+            pendingTickerText = null;
+            if (statusMessage.innerText !== text) {
+                statusMessage.innerText = text;
+            }
+            requestAnimationFrame(restartStatusScroll);
+            return;
+        }
+
+        if (statusMessage.innerText !== text) {
+            // 流れている途中では変更せず、次の周回開始時に切り替える。
+            pendingTickerText = text;
+        } else {
+            pendingTickerText = null;
+        }
+    }
+
+    function handleTickerIteration() {
+        if (pendingTickerText === null) return;
+        const statusMessage = document.getElementById('status-message');
+        const nextText = pendingTickerText;
+        pendingTickerText = null;
+        statusMessage.innerText = nextText;
+        // 文言の長さが変わるので、新しい幅で次の1周を開始する。
+        requestAnimationFrame(restartStatusScroll);
     }
 
     function updateStatusBar(now = new Date(), poleVisible = false) {
         const status = buildStatusMessage(now);
         const statusBar = document.getElementById('status-bar');
-        const statusMessage = document.getElementById('status-message');
-        const poleMessage = document.getElementById('pole-message');
         const nextClassName = `status-fixed-bar ${status.className}${poleVisible ? ' pole-visible' : ''}`;
-        const statusTextChanged = statusMessage.innerText !== status.text;
-        const poleText = `${poleCelebrationMessage}　　${status.text}`;
-        const poleTextChanged = poleMessage.innerText !== poleText;
-        const poleStateChanged = statusBar.className !== nextClassName;
+        const desiredText = poleVisible
+            ? `${poleCelebrationMessage}　　${status.text}`
+            : status.text;
 
-        // 通常コメントとサインポール用コメントを別要素で保持する。
-        // 出現時に通常コメントを書き換えないので、途中で幅が変わって崩れない。
-        if (statusTextChanged) statusMessage.innerText = status.text;
-        if (poleTextChanged) poleMessage.innerText = poleText;
-        if (poleStateChanged) statusBar.className = nextClassName;
-
-        if (poleStateChanged || (poleVisible ? poleTextChanged : statusTextChanged)) {
-            requestAnimationFrame(restartStatusScroll);
+        // 背景・サインポール枠は予定時刻どおり切り替える。
+        if (statusBar.className !== nextClassName) {
+            statusBar.className = nextClassName;
         }
+
+        // 本文は現在のスクロールを完走してから自然につなぐ。
+        applyTickerText(desiredText);
     }
 
     function createMonthElement(year, month, isPrintMode = false) {
@@ -1024,8 +1049,10 @@
             printPage2.appendChild(card2);
         }
 
+        const ticker = document.getElementById('status-message');
+        ticker.addEventListener('animationiteration', handleTickerIteration);
+
         updateStatusBar();
-        restartStatusScroll();
         updatePoleVisibility();
         window.setInterval(updatePoleVisibility, poleSchedule.checkIntervalMilliseconds);
         window.setInterval(() => {
