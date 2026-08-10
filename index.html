@@ -254,7 +254,8 @@
             opacity: 1;
         }
 
-        .status-message {
+        .status-message,
+        .pole-message {
             display: inline-block;
             white-space: nowrap;
             will-change: transform;
@@ -263,7 +264,20 @@
             z-index: 1;
         }
 
-        .status-fixed-bar:hover .status-message {
+        .pole-message {
+            display: none;
+        }
+
+        .status-fixed-bar.pole-visible .status-message {
+            display: none;
+        }
+
+        .status-fixed-bar.pole-visible .pole-message {
+            display: inline-block;
+        }
+
+        .status-fixed-bar:hover .status-message,
+        .status-fixed-bar:hover .pole-message {
             animation-play-state: paused;
         }
 
@@ -516,6 +530,7 @@
 
 <div id="status-bar" class="status-fixed-bar" aria-live="polite">
     <span id="status-message" class="status-message">確認中...</span>
+    <span id="pole-message" class="pole-message"></span>
 </div>
 
 <script>
@@ -810,41 +825,52 @@
         };
     }
 
-    function restartStatusScroll() {
+    function restartTicker(element) {
+        if (!element) return;
         const statusBar = document.getElementById('status-bar');
-        const statusMessage = document.getElementById('status-message');
         const barWidth = statusBar.clientWidth;
-        const messageWidth = statusMessage.scrollWidth;
 
-        statusMessage.style.animation = 'none';
-        statusMessage.style.setProperty('--scroll-start', `${barWidth}px`);
-        statusMessage.style.setProperty('--scroll-end', `${-messageWidth}px`);
+        // display:none の要素は幅を測れないため、表示中の要素だけ再計算する。
+        if (element.offsetParent === null) return;
 
-        // レイアウト確定後に再開。文言変更時の途中ジャンプを防ぐ。
-        void statusMessage.offsetWidth;
+        const messageWidth = element.scrollWidth;
+        element.style.animation = 'none';
+        element.style.setProperty('--scroll-start', `${barWidth}px`);
+        element.style.setProperty('--scroll-end', `${-messageWidth}px`);
+        void element.offsetWidth;
 
         const pixelsPerSecond = 90;
         const durationSeconds = Math.max(12, (barWidth + messageWidth) / pixelsPerSecond);
-        statusMessage.style.animation = `status-scroll ${durationSeconds}s linear infinite`;
+        element.style.animation = `status-scroll ${durationSeconds}s linear infinite`;
+    }
+
+    function restartStatusScroll() {
+        const statusBar = document.getElementById('status-bar');
+        const activeMessage = statusBar.classList.contains('pole-visible')
+            ? document.getElementById('pole-message')
+            : document.getElementById('status-message');
+        restartTicker(activeMessage);
     }
 
     function updateStatusBar(now = new Date(), poleVisible = false) {
         const status = buildStatusMessage(now);
         const statusBar = document.getElementById('status-bar');
         const statusMessage = document.getElementById('status-message');
-        const nextText = poleVisible
-            ? `${poleCelebrationMessage}　　${status.text}`
-            : status.text;
+        const poleMessage = document.getElementById('pole-message');
         const nextClassName = `status-fixed-bar ${status.className}${poleVisible ? ' pole-visible' : ''}`;
-        const textChanged = statusMessage.innerText !== nextText;
+        const statusTextChanged = statusMessage.innerText !== status.text;
+        const poleText = `${poleCelebrationMessage}　　${status.text}`;
+        const poleTextChanged = poleMessage.innerText !== poleText;
+        const poleStateChanged = statusBar.className !== nextClassName;
 
-        if (statusBar.className !== nextClassName) {
-            statusBar.className = nextClassName;
-        }
+        // 通常コメントとサインポール用コメントを別要素で保持する。
+        // 出現時に通常コメントを書き換えないので、途中で幅が変わって崩れない。
+        if (statusTextChanged) statusMessage.innerText = status.text;
+        if (poleTextChanged) poleMessage.innerText = poleText;
+        if (poleStateChanged) statusBar.className = nextClassName;
 
-        if (textChanged) {
-            statusMessage.innerText = nextText;
-            restartStatusScroll();
+        if (poleStateChanged || (poleVisible ? poleTextChanged : statusTextChanged)) {
+            requestAnimationFrame(restartStatusScroll);
         }
     }
 
