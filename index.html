@@ -551,6 +551,10 @@
         return `${date.getMonth() + 1}月${date.getDate()}日`;
     }
 
+    function formatMonthDayWithWeekday(date) {
+        return `${formatMonthDay(date)}${weekdaysLabels[date.getDay()]}曜日`;
+    }
+
     function isOffDate(date) {
         const year = date.getFullYear();
         const month = date.getMonth();
@@ -627,6 +631,7 @@
         const longBreak = findUpcomingLongBreak(todayOnly);
         const isDuringLongBreak = longBreak && todayOnly >= longBreak.start && todayOnly <= longBreak.end;
         const isCurrentlyOpen = !todayIsOff && hour >= 9 && hour < 19;
+        const shouldShowNextDayNotice = todayIsOff || hour >= 17;
         const longBreakLabel = longBreak
             ? longBreakLabels[dateKey(longBreak.start)] || '長期休業'
             : null;
@@ -635,23 +640,25 @@
             : null;
         let longBreakAnnounced = false;
 
-        if (isDuringLongBreak) {
-            messages.push(`${longBreakLabel}中のため、お休みをいただいております。`);
-        } else if (todayIsOff) {
-            messages.push('本日はお休みをいただいております。');
-        } else if (isCurrentlyOpen) {
-            messages.push('ただいま営業中です（19:00まで）。');
-        } else if (hour >= 19) {
+        if (hour < 19) {
+            if (isDuringLongBreak) {
+                messages.push(`${longBreakLabel}中のため、お休みをいただいております。`);
+            } else if (todayIsOff) {
+                messages.push('本日はお休みをいただいております。');
+            } else if (isCurrentlyOpen) {
+                messages.push('ただいま営業中です（19:00まで）。');
+            } else {
+                messages.push('本日は午前9時から営業予定です。');
+            }
+        } else if (!todayIsOff && hour < 22) {
             messages.push('本日の営業は終了しました。');
-        } else {
-            messages.push('本日は午前9時から営業予定です。');
         }
 
         if (isDuringLongBreak) {
             longBreakAnnounced = true;
         }
 
-        if (!isCurrentlyOpen) {
+        if (shouldShowNextDayNotice) {
             if (!tomorrowIsOff) {
                 messages.push('明日は午前9時から営業予定です。');
             } else {
@@ -664,7 +671,7 @@
                     longBreakAnnounced = true;
                 }
                 if (nextOpen) {
-                    messages.push(`次回は${formatMonthDay(nextOpen)}午前9時から営業予定です。`);
+                    messages.push(`次回は${formatMonthDayWithWeekday(nextOpen)}、午前9時から営業予定です。`);
                 }
             }
         }
